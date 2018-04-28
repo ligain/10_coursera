@@ -1,9 +1,10 @@
+import argparse
 import os
 from lxml import etree
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from helpers import CourseParser
+from openpyxl import Workbook
 
 
 FEED_URL = 'https://www.coursera.org/sitemap~www~courses.xml'
@@ -43,15 +44,58 @@ def get_courses_info(course_urls):
             yield course_response
 
 
-def save_courses_info_to_xlsx(filepath):
-    pass
+def save_courses_info_to_xlsx(filepath, courses):
+    workbook = Workbook(write_only=True)
+    workbook_sheet = workbook.create_sheet(title="Courses")
+    headers = ['Url', 'Title', 'Languages', 'Start date',
+               'Weeks', 'Average rating']
+    workbook_sheet.append(headers)
+    for course in courses:
+        print('Saving course row: ', course)
+        prepared_row = [
+            course['url'],
+            course['title'],
+            ', '.join(course['languages']),
+            course['start_date'].isoformat() if course.get('start_date') else None,
+            course['weeks'],
+            course['avg_rating']
+        ]
+        workbook_sheet.append(prepared_row)
+    workbook.save(filepath)
+
+
+def is_path(path):
+    if not os.path.exists(path):
+        raise argparse.ArgumentTypeError(
+            'It should be valid path'
+        )
+    return path
 
 
 def get_args():
-    pass
+    parser = argparse.ArgumentParser(
+        description='A tool to get info about courses on coursera.org '
+                    'and to save them in a xlsx file'
+    )
+    parser.add_argument(
+        '-p', '--path',
+        help='Path where a xlsx file should be saved',
+        type=is_path,
+        default='.',
+    )
+    parser.add_argument(
+        '-f', '--filename',
+        help='Name of a xlsx file with courses info',
+        required=True,
+        default='courses.xlsx'
+    )
+    return parser.parse_args()
 
 
 if __name__ == '__main__':
+
+    args = get_args()
+    output_file_path = os.path.join(args.path, args.filename)
 
     courses_urls = get_courses(FEED_URL)
 
@@ -59,7 +103,4 @@ if __name__ == '__main__':
 
     courses_properties = parse_courses(courses_info)
 
-    for course in courses_properties:
-        print(course)
-        break
-    # print(list(courses_info))
+    save_courses_info_to_xlsx(output_file_path, courses_properties)
