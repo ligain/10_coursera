@@ -3,14 +3,14 @@ import os
 from lxml import etree
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from helpers import CourseParser
+from helpers import parse_course
 from openpyxl import Workbook
 
 
 FEED_URL = 'https://www.coursera.org/sitemap~www~courses.xml'
 
 
-def get_courses(url, count=20):
+def get_courses_urls(url, count=20):
     feed = requests.get(url)
     if not feed.ok:
         return []
@@ -30,8 +30,7 @@ def parse_courses(courses_responses):
     for course_resp in courses_responses:
         if not course_resp.ok:
             continue
-        yield CourseParser(course_url=course_resp.url,
-                           course_html=course_resp.text).get_properties()
+        yield parse_course(course_resp.url, course_resp.text)
 
 
 def get_courses_info(course_urls):
@@ -44,24 +43,28 @@ def get_courses_info(course_urls):
             yield course_response
 
 
-def save_courses_info_to_xlsx(filepath, courses):
+def prepare_course(course_dict):
+    return [
+        course_dict['url'],
+        course_dict['title'],
+        course_dict['languages'],
+        course_dict['start_date'].isoformat() if course_dict.get('start_date') else None,
+        course_dict['weeks'],
+        course_dict['avg_rating']
+    ]
+
+
+def get_courses_workbook(courses):
     workbook = Workbook(write_only=True)
-    workbook_sheet = workbook.create_sheet(title="Courses")
+    workbook_sheet = workbook.create_sheet(title='Courses')
     headers = ['Url', 'Title', 'Languages', 'Start date',
                'Weeks', 'Average rating']
     workbook_sheet.append(headers)
     for course in courses:
         print('Saving course row: ', course)
-        prepared_row = [
-            course['url'],
-            course['title'],
-            ', '.join(course['languages']),
-            course['start_date'].isoformat() if course.get('start_date') else None,
-            course['weeks'],
-            course['avg_rating']
-        ]
+        prepared_row = prepare_course(course)
         workbook_sheet.append(prepared_row)
-    workbook.save(filepath)
+    return workbook
 
 
 def is_path(path):
@@ -86,7 +89,6 @@ def get_args():
     parser.add_argument(
         '-f', '--filename',
         help='Name of a xlsx file with courses info',
-        required=True,
         default='courses.xlsx'
     )
     return parser.parse_args()
@@ -97,10 +99,12 @@ if __name__ == '__main__':
     args = get_args()
     output_file_path = os.path.join(args.path, args.filename)
 
-    courses_urls = get_courses(FEED_URL)
+    courses_urls = get_courses_urls(FEED_URL)
 
     courses_info = get_courses_info(courses_urls)
 
     courses_properties = parse_courses(courses_info)
 
-    save_courses_info_to_xlsx(output_file_path, courses_properties)
+    workbook = get_courses_workbook(courses_properties)
+
+    workbook.save(output_file_path)
