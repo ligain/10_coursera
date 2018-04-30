@@ -18,12 +18,13 @@ def get_courses_urls(url, count=20):
     feed_tree = etree.fromstring(feed.text.encode())
     default_namespace = feed_tree.nsmap.get(None)
     loc_tag = '{{{ns}}}loc'.format(ns=default_namespace)
+    elements = iter(etree.iterwalk(feed_tree, tag=loc_tag))
 
-    for _, element in etree.iterwalk(feed_tree, tag=loc_tag):
-        if count > 0:
-            count -= 1
-            course_url = element.text
-            yield course_url
+    while count > 0:
+        _, element = next(elements)
+        course_url = element.text
+        count -= 1
+        yield course_url
 
 
 def parse_courses(courses_responses):
@@ -61,7 +62,6 @@ def get_courses_workbook(courses):
                'Weeks', 'Average rating']
     workbook_sheet.append(headers)
     for course in courses:
-        print('Saving course row: ', course)
         prepared_row = prepare_course(course)
         workbook_sheet.append(prepared_row)
     return workbook
